@@ -55,8 +55,20 @@ const ICONS: Record<string, IconDef> = {
     label: "Solar+",
     svg: (
       <>
-        {tile("#9b8cff", "#e3deff")}
-        <path d="M24 15v18M15 24h18" stroke="#9b8cff" strokeWidth="4" strokeLinecap="round" />
+        <defs>
+          <linearGradient id="scBolt" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#fff27a" />
+            <stop offset="1" stopColor="#f5b400" />
+          </linearGradient>
+        </defs>
+        {tile("#f0b71e", "#fff3c4")}
+        <path
+          d="M29 11 16.5 27.5 23 26.5 19 37.5 33 19.5 25.5 20.5Z"
+          fill="url(#scBolt)"
+          stroke="#e0a800"
+          strokeWidth="1.2"
+          strokeLinejoin="round"
+        />
       </>
     ),
   },
