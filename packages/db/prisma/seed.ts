@@ -1,8 +1,8 @@
 import { PrismaClient } from "@prisma/client";
 import { randomBytes, scryptSync } from "node:crypto";
 
-// Seed uses scrypt (Node built-in) so it has zero extra deps; the API uses Argon2.
-// Seeded accounts are for local demo only — log in, then change the password.
+// Seed uses scrypt (Node built-in) so it has zero extra deps; the API login
+// verifies both scrypt and Argon2 hashes.
 function hash(password: string): string {
   const salt = randomBytes(16);
   const derived = scryptSync(password, salt, 64);
@@ -12,8 +12,7 @@ function hash(password: string): string {
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("Seeding SolarCord demo data…");
-
+  // Keep the platform badge catalog (reference data, not user/server data).
   const platformBadges = [
     { key: "staff", name: "SolarCord Staff", description: "Member of the SolarCord team" },
     { key: "early_supporter", name: "Early Supporter", description: "Joined SolarCord early" },
@@ -27,68 +26,45 @@ async function main() {
     await prisma.userBadge.upsert({ where: { key: b.key }, update: {}, create: b });
   }
 
-  const nova = await prisma.user.upsert({
-    where: { email: "nova@solarcord.dev" },
+  // One-time wipe: while the old demo account is still present, clear ALL
+  // servers and users. After this runs once, the marker is gone, so anything
+  // created afterwards is never touched again.
+  const oldDemo = await prisma.user.findUnique({ where: { email: "nova@solarcord.dev" }, select: { id: true } });
+  if (oldDemo) {
+    console.log("Wiping all existing servers and users…");
+    await prisma.report.deleteMany();
+    await prisma.botApplication.deleteMany();
+    await prisma.conversation.deleteMany(); // cascades participants + direct messages
+    await prisma.server.deleteMany(); // cascades channels, messages, members, roles, invites, bans, etc.
+    await prisma.userBadgeLink.deleteMany();
+    await prisma.user.deleteMany(); // cascades sessions, settings, friendships
+    console.log("Wipe complete.");
+  }
+
+  // Ensure the single owner account exists.
+  const loxy = await prisma.user.upsert({
+    where: { email: "loxy@solarcord.app" },
     update: {},
     create: {
-      email: "nova@solarcord.dev",
-      username: "nova",
-      displayName: "Nova",
-      passwordHash: hash("password123"),
+      email: "loxy@solarcord.app",
+      username: "loxy",
+      displayName: "loxy",
+      passwordHash: hash("loxy12345"),
       isStaff: true,
     },
   });
 
-  // Grant Nova a few profile badges so they show on her profile card.
-  for (const key of ["staff", "early_supporter", "active_developer", "verified"]) {
-    const badge = await prisma.userBadge.findUnique({ where: { key }, select: { id: true } });
-    if (badge) {
-      await prisma.userBadgeLink.upsert({
-        where: { userId_badgeId: { userId: nova.id, badgeId: badge.id } },
-        update: {},
-        create: { userId: nova.id, badgeId: badge.id },
-      });
-    }
+  // Give the owner a Staff badge.
+  const staffBadge = await prisma.userBadge.findUnique({ where: { key: "staff" }, select: { id: true } });
+  if (staffBadge) {
+    await prisma.userBadgeLink.upsert({
+      where: { userId_badgeId: { userId: loxy.id, badgeId: staffBadge.id } },
+      update: {},
+      create: { userId: loxy.id, badgeId: staffBadge.id },
+    });
   }
 
-  // Demo servers owned by Nova — populate Discovery with badges.
-  const demoServers = [
-    { name: "Solar HQ", visibility: "COMMUNITY", category: "Tech", description: "The home base for SolarCord news, feedback and hangouts.", isVerified: true, isPartnered: false, boostLevel: 1, memberCount: 248 },
-    { name: "Pixel Forge", visibility: "DISCOVERABLE", category: "Gaming", description: "A cosy community for indie game lovers and pixel artists.", isVerified: false, isPartnered: false, boostLevel: 2, memberCount: 132 },
-    { name: "Code Nebula", visibility: "DISCOVERABLE", category: "Coding", description: "Developers helping developers — web, game dev, and everything in between.", isVerified: false, isPartnered: true, boostLevel: 0, memberCount: 87 },
-    { name: "Aurora Art", visibility: "COMMUNITY", category: "Art", description: "Share your work, get feedback, and find inspiration.", isVerified: false, isPartnered: true, boostLevel: 0, memberCount: 64 },
-  ];
-
-  const existing = await prisma.server.findFirst({ where: { ownerId: nova.id } });
-  if (!existing) {
-    for (const s of demoServers) {
-      const server = await prisma.server.create({
-        data: {
-          name: s.name,
-          description: s.description,
-          ownerId: nova.id,
-          visibility: s.visibility as "COMMUNITY" | "DISCOVERABLE" | "PUBLIC" | "PRIVATE",
-          category: s.category,
-          isVerified: s.isVerified,
-          isPartnered: s.isPartnered,
-          boostLevel: s.boostLevel,
-          memberCount: s.memberCount,
-          members: { create: { userId: nova.id } },
-          roles: { create: { name: "@everyone", isEveryone: true, permissions: "1024" } },
-          channels: {
-            create: [
-              { name: "welcome", type: "TEXT", position: 0 },
-              { name: "general", type: "TEXT", position: 1 },
-              { name: "Lounge", type: "VOICE", position: 2 },
-            ],
-          },
-        },
-      });
-      console.log(`Created demo server "${server.name}" (${server.id})`);
-    }
-  }
-
-  console.log("Done. Demo login → nova@solarcord.dev / password123");
+  console.log("Done. Owner login → loxy@solarcord.app / loxy12345");
 }
 
 main()
