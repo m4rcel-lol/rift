@@ -20,8 +20,8 @@ services:
     name: solarcord-api
     runtime: node
     plan: free
-    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm db:generate && pnpm --filter @solarcord/api build
-    startCommand: pnpm db:push && pnpm db:seed && node apps/api/dist/index.js
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm db:generate
+    startCommand: pnpm db:push && pnpm db:seed && pnpm --filter @solarcord/api exec tsx src/index.ts
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
